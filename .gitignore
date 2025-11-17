@@ -1,0 +1,16 @@
+﻿################################################################################
+# 此 .gitignore 文件已由 Microsoft(R) Visual Studio 自动创建。
+################################################################################
+
+/.vs/VariableCompoletSample
+/Backup
+/bin
+/obj/x86/Debug
+/App.ico
+/AssemblyInfo.cs
+/Form1.resx
+/Program.cs
+/UpgradeLog.htm
+/VariableCompolet.dll
+/VariableCompoletSample - 副本.csproj
+/VariableCompoletSample.csproj
