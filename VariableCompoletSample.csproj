@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
+    <ProjectGuid>{A14ABBE0-CEE8-4B4B-B37F-07739FBE6D46}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>VariableCompoletSample</RootNamespace>
+    <AssemblyName>VariableCompoletSample</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <TargetFrameworkProfile />
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <Deterministic>true</Deterministic>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
+    <PlatformTarget>x86</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\x86\Debug\</OutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
+    <PlatformTarget>x86</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\x86\Release\</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>C:\Program Files (x86)\Microsoft SDKs\NuGetPackages\newtonsoft.json\13.0.1\lib\netstandard2.0\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+    <!-- Omron CX-Compolet references -->
+    <Reference Include="OMRON.Compolet.Variable">
+      <HintPath>C:\Program Files (x86)\OMRON\CX-Compolet\bin\OMRON.Compolet.Variable.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="OMRON.Compolet.CIP">
+      <HintPath>C:\Program Files (x86)\OMRON\CX-Compolet\bin\OMRON.Compolet.CIP.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="OMRON.FinsGateway.EventMemory">
+      <HintPath>C:\Program Files (x86)\OMRON\CX-Compolet\bin\OMRON.FinsGateway.EventMemory.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="VariableCompolet, Version=1.7.4.0, Culture=neutral, PublicKeyToken=f3505d5782c23c5d, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>.\VariableCompolet.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="CommandHandler.cs" />
+    <Compile Include="CppCommandRouter.cs" />
+    <Compile Include="EqTcpServer.cs" />
+    <Compile Include="Form1.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="AssemblyInfo.cs" />
+    <Compile Include="LinkSignalHandler.cs" />
+    <Compile Include="PpidDrawingMapForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="SignalMonitorForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Form1.resx">
+      <DependentUpon>Form1.cs</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="App.ico" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

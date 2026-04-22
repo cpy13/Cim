@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Blend for Visual Studio Version 18
+VisualStudioVersion = 18.3.11206.111 d18.3
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VariableCompoletSample", "VariableCompoletSample.csproj", "{A14ABBE0-CEE8-4B4B-B37F-07739FBE6D46}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A14ABBE0-CEE8-4B4B-B37F-07739FBE6D46}.Debug|x86.ActiveCfg = Debug|x86
+		{A14ABBE0-CEE8-4B4B-B37F-07739FBE6D46}.Debug|x86.Build.0 = Debug|x86
+		{A14ABBE0-CEE8-4B4B-B37F-07739FBE6D46}.Release|x86.ActiveCfg = Release|x86
+		{A14ABBE0-CEE8-4B4B-B37F-07739FBE6D46}.Release|x86.Build.0 = Release|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {BC5DCE35-6643-4615-B7AA-61820DDF4246}
+	EndGlobalSection
+EndGlobal
