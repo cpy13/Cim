@@ -217,7 +217,7 @@ namespace EQModeChangeSimulator
         }
         private void WriteSendStartToDownstream(bool on)
         {
-            const string tag = "RV_EQToEQ_LinkSignal_04_03_00";
+            const string tag = "SD_EQToEQ_LinkSignal_03_04_00";
 
             int[] words = _readWordArray(tag);
             if (words == null || words.Length <= 0)
@@ -245,7 +245,7 @@ namespace EQModeChangeSimulator
         }
         private void WriteConveyerStateToDownstream(bool on)
         {
-            const string tag = "RV_EQToEQ_LinkSignal_04_03_00";
+            const string tag = "SD_EQToEQ_LinkSignal_03_04_00";
 
             int[] words = _readWordArray(tag);
             if (words == null || words.Length <= 0)
@@ -273,7 +273,7 @@ namespace EQModeChangeSimulator
         }
         private void WriteSendCompleteToDownstream(bool on)
         {
-            const string tag = "RV_EQToEQ_LinkSignal_04_03_00";
+            const string tag = "SD_EQToEQ_LinkSignal_03_04_00";
 
             int[] words = _readWordArray(tag);
             if (words == null || words.Length <= 0)
@@ -301,7 +301,7 @@ namespace EQModeChangeSimulator
         }
         private void WriteSendAbleToDownstream(bool on)
         {
-            const string tag = "RV_EQToEQ_LinkSignal_04_03_00";
+            const string tag = "SD_EQToEQ_LinkSignal_03_04_00";
 
             int[] words = _readWordArray(tag);
             if (words == null || words.Length <= 0)

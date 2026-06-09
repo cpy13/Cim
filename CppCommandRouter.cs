@@ -1302,7 +1302,7 @@ namespace EQModeChangeSimulator
 
             bool on = (bool?)d["value"] ?? false;
 
-            const string tag = "RV_EQToEQ_LinkSignal_04_03_00";
+            const string tag = "SD_EQToEQ_LinkSignal_03_04_00";
             int[] words = _ctx.ReadWordArray(tag);
 
             if (words == null || words.Length <= 0)
@@ -1368,7 +1368,7 @@ namespace EQModeChangeSimulator
             _ctx.Log("[TCP] 收到 JobData，准备写入 EQ→EQ");
 
             // ========== 2. 写入 下游EQ→EQ 标签 ==========
-            const string tag = "RV_EQToEQ_LinkSignal_04_03_00";
+            const string tag = "SD_EQToEQ_LinkSignal_03_04_00";
             int[] words = _ctx.ReadWordArray(tag);
 
             if (words == null)
@@ -1392,7 +1392,7 @@ namespace EQModeChangeSimulator
             bool ok = _ctx.WriteWordArray(tag, words);
 
             if (ok)
-                _ctx.Log("✔ 已写入 下游EQ JobData（150 WORD → RV_EQToEQ_LinkSignal_04_03_00）");
+                _ctx.Log("✔ 已写入 下游EQ JobData（150 WORD → SD_EQToEQ_LinkSignal_03_04_00）");
             else
                 _ctx.Log("❌ EQ→EQ JobData 写入失败");
         }

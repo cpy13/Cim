@@ -163,14 +163,14 @@ namespace EQModeChangeSimulator
                 UiGroup="下游通讯",
                 UiSubGroup="本机 → 下游",
                 DisplayName="Upstream In line",
-                Tag="RV_EQToEQ_LinkSignal_04_03_00",
+                Tag="SD_EQToEQ_LinkSignal_03_04_00",
                 Word=0, Bit=0
             },
               new SignalDef{
                 UiGroup="下游通讯",
                 UiSubGroup="本机 → 下游",
                 DisplayName="Job Transfer Signal",
-                Tag="RV_EQToEQ_LinkSignal_04_03_00",
+                Tag="SD_EQToEQ_LinkSignal_03_04_00",
                 Word=0, Bit=2
             },
 
@@ -178,7 +178,7 @@ namespace EQModeChangeSimulator
                 UiGroup="下游通讯",
                 UiSubGroup="本机 → 下游",
                 DisplayName="Send Able",
-                Tag="RV_EQToEQ_LinkSignal_04_03_00",
+                Tag="SD_EQToEQ_LinkSignal_03_04_00",
                 Word=0, Bit=3,
                 Writable=true
             },
@@ -186,14 +186,14 @@ namespace EQModeChangeSimulator
                 UiGroup="下游通讯",
                 UiSubGroup="本机 → 下游",
                 DisplayName="Send Start",
-                Tag="RV_EQToEQ_LinkSignal_04_03_00",
+                Tag="SD_EQToEQ_LinkSignal_03_04_00",
                 Word=0, Bit=4
             },
             new SignalDef{
                 UiGroup="下游通讯",
                 UiSubGroup="本机 → 下游",
                 DisplayName="Send Complete",
-                Tag="RV_EQToEQ_LinkSignal_04_03_00",
+                Tag="SD_EQToEQ_LinkSignal_03_04_00",
                 Word=0, Bit=5,
                 Writable=true
 
@@ -202,14 +202,14 @@ namespace EQModeChangeSimulator
                 UiGroup="下游通讯",
                 UiSubGroup="本机 → 下游",
                 DisplayName="Conveyer State",
-                Tag="RV_EQToEQ_LinkSignal_04_03_00",
+                Tag="SD_EQToEQ_LinkSignal_03_04_00",
                 Word=0, Bit=11
             },
               new SignalDef{
                 UiGroup="下游通讯",
                 UiSubGroup="本机 → 下游",
                 DisplayName="Glass Exist Arm#1",
-                Tag="RV_EQToEQ_LinkSignal_04_03_00",
+                Tag="SD_EQToEQ_LinkSignal_03_04_00",
                 Word=4, Bit=0
             },
             // 下游 → 本机（RV）
@@ -217,49 +217,49 @@ namespace EQModeChangeSimulator
                 UiGroup="下游通讯",
                 UiSubGroup="下游 → 本机",
                 DisplayName="Downstream In line",
-                Tag="SD_EQToEQ_LinkSignal_03_04_00",
+                Tag="RV_EQToEQ_LinkSignal_04_03_00",
                 Word=3, Bit=0
             },
               new SignalDef{
                 UiGroup="下游通讯",
                 UiSubGroup="下游 → 本机",
                 DisplayName="Job Transfer Signal",
-                Tag="SD_EQToEQ_LinkSignal_03_04_00",
+                Tag="RV_EQToEQ_LinkSignal_04_03_00",
                 Word=3, Bit=2
             },
             new SignalDef{
                 UiGroup="下游通讯",
                 UiSubGroup="下游 → 本机",
                 DisplayName="Receive Able",
-                Tag="SD_EQToEQ_LinkSignal_03_04_00",
+                Tag="RV_EQToEQ_LinkSignal_04_03_00",
                 Word=3, Bit=3
             },
             new SignalDef{
                 UiGroup="下游通讯",
                 UiSubGroup="下游 → 本机",
                 DisplayName="Receive Start",
-                Tag="SD_EQToEQ_LinkSignal_03_04_00",
+                Tag="RV_EQToEQ_LinkSignal_04_03_00",
                 Word=3, Bit=4
             },
             new SignalDef{
                 UiGroup="下游通讯",
                 UiSubGroup="下游 → 本机",
                 DisplayName="Receive Complete",
-                Tag="SD_EQToEQ_LinkSignal_03_04_00",
+                Tag="RV_EQToEQ_LinkSignal_04_03_00",
                 Word=3, Bit=5
             },
               new SignalDef{
                 UiGroup="下游通讯",
                 UiSubGroup="下游 → 本机",
                 DisplayName="Conveyer State",
-                Tag="SD_EQToEQ_LinkSignal_03_04_00",
+                Tag="RV_EQToEQ_LinkSignal_04_03_00",
                 Word=3, Bit=11
             },
                new SignalDef{
                 UiGroup="下游通讯",
                 UiSubGroup="下游 → 本机",
                 DisplayName="Glass Exist Arm#1",
-                Tag="SD_EQToEQ_LinkSignal_03_04_00",
+                Tag="RV_EQToEQ_LinkSignal_04_03_00",
                 Word=4, Bit=0
             },
 
