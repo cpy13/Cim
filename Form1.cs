@@ -624,6 +624,9 @@ namespace EQModeChangeSimulator
             AddEvent("AlarmReport",
               "SD_EQToCIM_Data01_03_01_00", 0, 11,
               "RV_CIMToEQ_Data_01_03_00", 1, 6);
+            AddEvent("CVDataReport",
+              "SD_EQToCIM_Data01_03_01_00", 0, 12,
+              "RV_CIMToEQ_Data_01_03_00", 1, 12);
             AddEvent("TactTimeChangeReport",
             "SD_EQToCIM_Data02_03_01_00", 0, 1,
             "RV_CIMToEQ_Data_01_03_00", 1, 14);
@@ -1042,8 +1045,22 @@ namespace EQModeChangeSimulator
         }
         public void SendEventAndBlock(string eventName, Action<int[]> blockWriter)
         {
-            var em = EventMapping[eventName];
-            var st = EventStates[eventName];
+            Log($"[DEBUG] SendEventAndBlock enter, eventName:{eventName}");
+            eventName = eventName?.Trim() ?? "";
+
+            if (!EventMapping.TryGetValue(eventName, out var em))
+            {
+                Log($"[ERROR] SendEventAndBlock 未找到事件映射, eventName:{eventName}");
+                Log($"[ERROR] EventMapping keys: {string.Join(", ", EventMapping.Keys)}");
+                return;
+            }
+
+            if (!EventStates.TryGetValue(eventName, out var st))
+            {
+                Log($"[ERROR] SendEventAndBlock 未找到事件状态, eventName:{eventName}");
+                Log($"[ERROR] EventStates keys: {string.Join(", ", EventStates.Keys)}");
+                return;
+            }
 
             int[] data = ReadWordArray(em.EQTag);
             if (data == null)

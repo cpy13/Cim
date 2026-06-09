@@ -119,9 +119,10 @@ namespace EQModeChangeSimulator
                     //eq to  eq
                     //作为下游发送上游
                     case "ReceiveAble":
-                        if (!Form1.Instance.Eq2EqEnabled) break;                     
+                        if (!Form1.Instance.Eq2EqEnabled) break;
                         HandleReceiveAbleFromCpp(obj);
                         break;
+
                     case "ConveyerState":
                         if (!Form1.Instance.Eq2EqEnabled) break;
                         HandleConveyerStateFromCpp(obj);
@@ -1041,7 +1042,7 @@ namespace EQModeChangeSimulator
         //*************************************************************EQ  TO   EQ**************************************************************************************
         private void HandleReceiveAbleFromCpp(JObject obj)
         {
-           
+
             var d = obj["data"];
             if (d == null)
             {
@@ -1078,6 +1079,7 @@ namespace EQModeChangeSimulator
                 _ctx.Log($"❌ 发送上游 EQ ReceiveAble 失败");
             }
         }
+
         private void HandleConveyerStateFromCpp(JObject obj)
         {
             var d = obj["data"];
