@@ -481,7 +481,7 @@ namespace EQModeChangeSimulator
           
             _ctx.SendEventAndBlock("TactTimeChangeReport", data =>
             {
-                const int baseWord = 41;
+                const int baseWord = 391;
 
                 int plcValue = (int)(tactSec * 100);   // 12.75 秒 → 1275
 
@@ -814,78 +814,143 @@ namespace EQModeChangeSimulator
 
             // ========== 1. 解析 JSON 字段 ==========
 
-            // JobID（40 字节）
-            string jobId = ((string?)d["jobId"] ?? "").PadRight(40, ' ');
-
-            // CST Sequence Number
+            string jobId = ((string?)d["jobId"] ?? "");
             int cstSeq = (int?)d["cstSeq"] ?? 0;
-
-            // Slot Sequence Number
             int slotSeq = (int?)d["slotSeq"] ?? 0;
 
-            // Defect Code Name（20 字节）
-            string defectName = ((string?)d["defectCodeName"] ?? "").PadRight(20, ' ');
+            string defectName = ((string?)d["defectCodeName"] ?? "");
+            string judgeCode = ((string?)d["judgeCode"] ?? " ");
+            string gradeCode = ((string?)d["gradeCode"] ?? " ");
 
-            // Judge Code（1 字节）
-            string judgeCode = ((string?)d["judgeCode"] ?? " ").PadLeft(1);
+            var points = d["points"] as JArray;
 
-            // Grade Code（1 字节）
-            string gradeCode = ((string?)d["gradeCode"] ?? " ").PadLeft(1);
+            // ========== 2. 工具函数：ASCII 按 1 WORD = 2 字符写入 ==========
+            // 当前你已经通过 CIMMessageSetCommand 测试确认：
+            // WORD = lowByte + highByte * 256，即低字节在前。
+            void WriteAsciiWords(int[] data, int startWord, string text, int wordCount)
+            {
+                int byteCount = wordCount * 2;
 
+                string fixedText = (text ?? "");
+                if (fixedText.Length > byteCount)
+                    fixedText = fixedText.Substring(0, byteCount);
 
-            // ========== 2. 写 PLC Block（DefectCodeReportBlock = 40 WORD）==========
+                fixedText = fixedText.PadRight(byteCount, ' ');
+
+                byte[] bytes = Encoding.ASCII.GetBytes(fixedText);
+
+                for (int i = 0; i < wordCount; i++)
+                {
+                    byte lo = bytes[i * 2];
+                    byte hi = bytes[i * 2 + 1];
+
+                    data[startWord + i] = (hi << 8) | lo;
+                }
+            }
+
+            int ToWordValue(JToken? token)
+            {
+                int v = (int?)token ?? 0;
+
+                if (v < 0)
+                    v = 0;
+
+                if (v > 65535)
+                    v = 65535;
+
+                return v;
+            }
+
+            // ========== 3. 写 PLC Block ==========
             _ctx.SendEventAndBlock("DefectCodeReport", data =>
             {
-                const int baseWord = 1;   // ★ Block 从 Word[1] 开始写（与所有 EQ→CIM 事件一致）
+                const int baseWord = 1;   // Word[0] 是 EQPEvent，DefectCodeReportBlock 从 Word[1] 开始
 
                 // --------------------------------------------------
-                // 2.1 JobID（20 WORD = 40 字节）
+                // 3.1 Header 部分
                 // --------------------------------------------------
-                byte[] jidBytes = Encoding.ASCII.GetBytes(jobId);
-                for (int i = 0; i < 20; i++)
-                {
-                    byte lo = jidBytes[i * 2];
-                    byte hi = jidBytes[i * 2 + 1];
-                    data[baseWord + i] = (hi << 8) | lo;
-                }
 
-                // --------------------------------------------------
-                // 2.2 CSTSequenceNumber
-                // --------------------------------------------------
+                // JobID：20 WORD = 40 ASCII 字节
+                WriteAsciiWords(data, baseWord + 0, jobId, 20);
+
+                // CSTSequenceNumber
                 data[baseWord + 20] = cstSeq;
 
-                // --------------------------------------------------
-                // 2.3 SlotSequenceNumber
-                // --------------------------------------------------
+                // SlotSequenceNumber
                 data[baseWord + 21] = slotSeq;
 
+                // DefectCodeName：10 WORD = 20 ASCII 字节
+                WriteAsciiWords(data, baseWord + 22, defectName, 10);
+
+                // JobJudgeCode：1 WORD ASCII
+                WriteAsciiWords(data, baseWord + 32, judgeCode, 1);
+
+                // JobGradeCode：1 WORD ASCII
+                WriteAsciiWords(data, baseWord + 33, gradeCode, 1);
+
                 // --------------------------------------------------
-                // 2.4 DefectCodeName（10 WORD = 20 字节）
+                // 3.2 清空 50 个点位区域
+                // 每个点 7 WORD：
+                // X, Y, Color, ReasonCode[4]
                 // --------------------------------------------------
-                byte[] defBytes = Encoding.ASCII.GetBytes(defectName);
-                for (int i = 0; i < 10; i++)
+                for (int i = 0; i < 50; i++)
                 {
-                    byte lo = defBytes[i * 2];
-                    byte hi = defBytes[i * 2 + 1];
-                    data[baseWord + 22 + i] = (hi << 8) | lo;
+                    int pointBase = baseWord + 34 + i * 7;
+
+                    data[pointBase + 0] = 0; // X
+                    data[pointBase + 1] = 0; // Y
+
+                    WriteAsciiWords(data, pointBase + 2, "", 1); // Color
+                    WriteAsciiWords(data, pointBase + 3, "", 4); // ReasonCode
                 }
 
                 // --------------------------------------------------
-                // 2.5 JobJudgeCode（1 字符）
+                // 3.3 写入实际点位，最多 50 个
                 // --------------------------------------------------
-                byte[] jBytes = Encoding.ASCII.GetBytes(judgeCode);
-                data[baseWord + 32] = jBytes[0];
+                int pointCount = points == null ? 0 : Math.Min(points.Count, 50);
+
+                for (int i = 0; i < pointCount; i++)
+                {
+                    JObject? p = points![i] as JObject;
+                    if (p == null)
+                        continue;
+
+                    int pointBase = baseWord + 34 + i * 7;
+
+                    int x = ToWordValue(p["x"]);
+                    int y = ToWordValue(p["y"]);
+
+                    string color = (string?)p["color"] ?? " ";
+                    string reasonCode = (string?)p["reasonCode"] ?? "";
+
+                    // X#n
+                    data[pointBase + 0] = x;
+
+                    // Y#n
+                    data[pointBase + 1] = y;
+
+                    // Color#n：1 WORD ASCII
+                    WriteAsciiWords(data, pointBase + 2, color, 1);
+
+                    // ReasonCode#n：4 WORD ASCII = 8 字节
+                    WriteAsciiWords(data, pointBase + 3, reasonCode, 4);
+                }
 
                 // --------------------------------------------------
-                // 2.6 JobGradeCode（1 字符）
+                // 3.4 Reserved
+                // block offset 384 ~ 389，共 6 WORD，清 0
                 // --------------------------------------------------
-                byte[] gBytes = Encoding.ASCII.GetBytes(gradeCode);
-                data[baseWord + 33] = gBytes[0];
-
-                // baseWord + 34 ~ 39  为 Reserved，不写。
+                for (int i = 0; i < 6; i++)
+                {
+                    data[baseWord + 384 + i] = 0;
+                }
             });
 
+            _ctx.Log($"[TCP] DefectCodeReport handled, jobId:{jobId.Trim()}, cst:{cstSeq}, slot:{slotSeq}, points:{(points == null ? 0 : Math.Min(points.Count, 50))}");
         }
+
+
+
 
         private void HandleDVData(JObject obj)
         {
@@ -1237,7 +1302,7 @@ namespace EQModeChangeSimulator
 
             bool on = (bool?)d["value"] ?? false;
 
-            const string tag = "SD_EQToEQ_LinkSignal_03_02_01";
+            const string tag = "RV_EQToEQ_LinkSignal_04_03_00";
             int[] words = _ctx.ReadWordArray(tag);
 
             if (words == null || words.Length <= 0)
@@ -1303,7 +1368,7 @@ namespace EQModeChangeSimulator
             _ctx.Log("[TCP] 收到 JobData，准备写入 EQ→EQ");
 
             // ========== 2. 写入 下游EQ→EQ 标签 ==========
-            const string tag = "SD_EQToEQ_LinkSignal_03_02_01";
+            const string tag = "RV_EQToEQ_LinkSignal_04_03_00";
             int[] words = _ctx.ReadWordArray(tag);
 
             if (words == null)
@@ -1327,7 +1392,7 @@ namespace EQModeChangeSimulator
             bool ok = _ctx.WriteWordArray(tag, words);
 
             if (ok)
-                _ctx.Log("✔ 已写入 下游EQ JobData（150 WORD → SD_EQToEQ_LinkSignal_03_02_01）");
+                _ctx.Log("✔ 已写入 下游EQ JobData（150 WORD → RV_EQToEQ_LinkSignal_04_03_00）");
             else
                 _ctx.Log("❌ EQ→EQ JobData 写入失败");
         }
