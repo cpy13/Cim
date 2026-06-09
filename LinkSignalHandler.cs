@@ -102,7 +102,7 @@ namespace EQModeChangeSimulator
             int[] job = new int[150];
             Array.Copy(data, 6, job, 0, 150);
 
-           
+            LocalFileLogger.Info("EQ2EQ", "Upstream SendAble ON, jobLen=150 tag=" + tag);
     
             SendToCpp("SendAbleJobData", new
             {

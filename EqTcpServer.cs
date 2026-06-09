@@ -38,6 +38,7 @@ namespace EQModeChangeSimulator
             _listener = new TcpListener(IPAddress.Any, port);
             _listener.Start();
 
+            LocalFileLogger.Info("TCP", "Server listening port=" + port);
             _log($"[TCP] EQ TCP Server 启动，监听端口: {port}");
 
             // ★★ 启动真正的后台线程，不做任何同步阻塞 ★★
@@ -56,10 +57,12 @@ namespace EQModeChangeSimulator
                 _listener?.Stop();
                 _listener = null;
 
+                LocalFileLogger.Info("TCP", "Server stopped");
                 _log("[TCP] EQ TCP Server 已停止");
             }
             catch (Exception ex)
             {
+                LocalFileLogger.Error("TCP", "Stop failed: " + ex.Message);
                 _log("[TCP] Stop 异常: " + ex.Message);
             }
         }
@@ -72,6 +75,7 @@ namespace EQModeChangeSimulator
                 try
                 {
                     var client = _listener.AcceptTcpClient(); // sync wait
+                    LocalFileLogger.Info("TCP", "Client connected remote=" + client.Client.RemoteEndPoint);
                     _log("[TCP] 客户端连接进来: " + client.Client.RemoteEndPoint);
 
                     // 处理客户端（异步）
@@ -80,7 +84,10 @@ namespace EQModeChangeSimulator
                 catch (Exception ex)
                 {
                     if (!token.IsCancellationRequested)
+                    {
+                        LocalFileLogger.Error("TCP", "Accept failed: " + ex.Message);
                         _log("[TCP] Accept 异常: " + ex.Message);
+                    }
                 }
             }
         }
@@ -102,6 +109,7 @@ namespace EQModeChangeSimulator
 
                     if (len == 0)
                     {
+                        LocalFileLogger.Warn("TCP", "Client disconnected");
                         _log("[TCP] 客户端断开连接");
                         break;
                     }
@@ -117,12 +125,14 @@ namespace EQModeChangeSimulator
                 }
                 catch (Exception ex)
                 {
+                    LocalFileLogger.Error("TCP", "Read failed: " + ex.Message);
                     _log("[TCP] Read 异常: " + ex.Message);
                     break;
                 }
             }
 
             client.Close();
+            LocalFileLogger.Info("TCP", "Client handler ended");
             _log("[TCP] HandleClient 结束");
         }
 
@@ -168,12 +178,14 @@ namespace EQModeChangeSimulator
                     !_currentClient.Connected ||
                     _currentStream == null)
                 {
+                    LocalFileLogger.Warn("TCP", "Send failed: no client");
                     _log("[TCP] 发送失败：无可用客户端连接");
                     return false;
                 }
 
                 if (string.IsNullOrWhiteSpace(json))
                 {
+                    LocalFileLogger.Warn("TCP", "Send failed: empty json");
                     _log("[TCP] 发送失败：json 为空");
                     return false;
                 }
@@ -192,6 +204,7 @@ namespace EQModeChangeSimulator
             }
             catch (Exception ex)
             {
+                LocalFileLogger.Error("TCP", "Send failed: " + ex.Message);
                 _log("[TCP] SendToClient 异常: " + ex.Message);
                 return false;
             }

@@ -43,6 +43,7 @@ namespace EQModeChangeSimulator
             {
                 var obj = JObject.Parse(jsonText);
                 string cmd = (string)obj["cmd"] ?? "";
+                LogKeyCommand(cmd, obj);
 
                 switch (cmd)
                 {
@@ -149,13 +150,41 @@ namespace EQModeChangeSimulator
                         HandleJobData(obj);
                         break;
                     default:
+                        LocalFileLogger.Warn("CMD", "Unknown cmd: " + cmd);
                         _ctx.Log($"[TCP] 未知 cmd: {cmd}");
                         break;
                 }
             }
             catch (Exception ex)
             {
+                LocalFileLogger.Error("CMD", "JSON parse failed: " + ex.Message);
                 _ctx.Log($"[TCP] JSON 解析失败: {ex.Message}, 原始数据: {jsonText}");
+            }
+        }
+
+        private void LogKeyCommand(string cmd, JObject obj)
+        {
+            if (string.IsNullOrEmpty(cmd)) return;
+
+            switch (cmd)
+            {
+                case "JobData":
+                    var d = obj["data"];
+                    int length = d == null ? 0 : ((int?)d["length"] ?? 0);
+                    var jobArray = d == null ? null : d["job"] as JArray;
+                    int jobCount = jobArray == null ? 0 : jobArray.Count;
+                    LocalFileLogger.Info("CMD", "Received JobData length=" + length + " jobCount=" + jobCount);
+                    break;
+                case "SendAble":
+                case "ReceiveAble":
+                case "ConveyerState":
+                case "GlassExistArm1":
+                case "JobTransferSignal":
+                case "ReceiveComplete":
+                    var data = obj["data"];
+                    bool on = data != null && ((bool?)data["value"] ?? false);
+                    LocalFileLogger.Info("EQ2EQ", "Received cmd=" + cmd + " value=" + (on ? "ON" : "OFF"));
+                    break;
             }
         }
 
@@ -1340,6 +1369,7 @@ namespace EQModeChangeSimulator
             var d = obj["data"];
             if (d == null)
             {
+                LocalFileLogger.Error("CMD", "JobData rejected: missing data");
                 _ctx.Log("[TCP] JobData 缺少 data 字段");
                 return;
             }
@@ -1348,6 +1378,7 @@ namespace EQModeChangeSimulator
 
             if (length < 150)
             {
+                LocalFileLogger.Error("CMD", "JobData rejected: length < 150 length=" + length);
                 _ctx.Log($"❌ JobData 长度不足：length={length}, 需要 150 WORD");
                 return;
             }
@@ -1356,6 +1387,8 @@ namespace EQModeChangeSimulator
             JArray arr = (JArray)d["job"];
             if (arr == null || arr.Count < 150)
             {
+                LocalFileLogger.Error("CMD", "JobData rejected: job array length < 150 count=" +
+                    (arr == null ? 0 : arr.Count));
                 _ctx.Log("❌ JobData 数组缺失或长度不足 150");
                 return;
             }
@@ -1373,6 +1406,7 @@ namespace EQModeChangeSimulator
 
             if (words == null)
             {
+                LocalFileLogger.Error("JOBDATA", "Read downstream tag failed tag=" + tag);
                 _ctx.Log($"❌ 无法读取 EQ→EQ tag: {tag}");
                 return;
             }
@@ -1380,6 +1414,8 @@ namespace EQModeChangeSimulator
             // 检查容量
             if (words.Length < 6 + 150)
             {
+                LocalFileLogger.Error("JOBDATA", "Downstream tag too short tag=" + tag +
+                    " len=" + words.Length);
                 _ctx.Log($"❌ Tag {tag} 的长度不足以写入 150 WORD（需要 >= {6 + 150}）");
                 return;
             }
@@ -1392,9 +1428,15 @@ namespace EQModeChangeSimulator
             bool ok = _ctx.WriteWordArray(tag, words);
 
             if (ok)
+            {
+                LocalFileLogger.Info("JOBDATA", "Write downstream JobData OK tag=" + tag + " words=150");
                 _ctx.Log("✔ 已写入 下游EQ JobData（150 WORD → SD_EQToEQ_LinkSignal_03_04_00）");
+            }
             else
+            {
+                LocalFileLogger.Error("JOBDATA", "Write downstream JobData failed tag=" + tag + " words=150");
                 _ctx.Log("❌ EQ→EQ JobData 写入失败");
+            }
         }
 
 

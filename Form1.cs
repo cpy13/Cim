@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Reflection;
 using System.Text;
 using System.Windows.Forms;
 using static System.Windows.Forms.AxHost;
@@ -163,6 +164,8 @@ namespace EQModeChangeSimulator
         public Form1()
         {
             Instance = this;
+            LocalFileLogger.Info("APP", "Startup cwd=" + AppDomain.CurrentDomain.BaseDirectory +
+                " version=" + Assembly.GetExecutingAssembly().GetName().Version);
             InitializeComponent();
             InitCmdMapping();
             InitEventSystem();
@@ -174,10 +177,12 @@ namespace EQModeChangeSimulator
      _cppRouter.HandleRawJson,
      () =>
      {
+         LocalFileLogger.Info("TCP", "Main software connected");
         
          PpidDrawingMapForm.TrySendLatestToCpp();
      });
             _tcpServer.Start(9999);
+            LocalFileLogger.Info("TCP", "Server started port=9999");
             cmdHandler = new CommandHandler(
     ReadWordArray,
     WriteWordArray,    // ★ 加这一行
@@ -782,6 +787,7 @@ namespace EQModeChangeSimulator
         {
             try
             {
+                LocalFileLogger.Info("APP", "Closing");
                 Log("[System] 软件关闭，复位 EQ↔EQ 通讯信号");
 
                 // ===== 1. 先停所有定时器 =====
@@ -811,7 +817,12 @@ namespace EQModeChangeSimulator
             catch (Exception ex)
             {
                 // 关闭过程中不要弹窗，避免卡死
+                LocalFileLogger.Error("APP", "Close reset failed: " + ex.Message);
                 Log("[System] 关闭复位异常: " + ex.Message);
+            }
+            finally
+            {
+                LocalFileLogger.Info("APP", "Closed");
             }
         }
 
@@ -858,6 +869,7 @@ namespace EQModeChangeSimulator
                 variableCompolet1.SetEvent("RV_CIMToEQ_PanelManagement_01_03_00", 2);
                 variableCompolet1.SetEvent("RV_EQToEQ_LinkSignal_02_03_00", 3);
                 variableCompolet1.SetEvent("RV_EQToEQ_LinkSignal_04_03_00", 4);
+                LocalFileLogger.Info("PLC", "Monitoring started");
                 _state = EqState.Idle;
                 UpdateState();
 
@@ -885,6 +897,7 @@ namespace EQModeChangeSimulator
             }
             catch (Exception ex)
             {
+                LocalFileLogger.Error("PLC", "Monitoring start failed: " + ex.Message);
                 MessageBox.Show("Start Error: " + ex.Message);
             }
         }
@@ -902,6 +915,7 @@ namespace EQModeChangeSimulator
                 variableCompolet1.ClearEvent("RV_CIMToEQ_PanelManagement_01_03_00");
                 variableCompolet1.ClearEvent("RV_EQToEQ_LinkSignal_02_03_00");
                 variableCompolet1.ClearEvent("RV_EQToEQ_LinkSignal_04_03_00");
+                LocalFileLogger.Info("PLC", "Monitoring stopped");
                 _state = EqState.Idle;
                 UpdateState();
                 Log("停止监控");
@@ -1492,6 +1506,7 @@ namespace EQModeChangeSimulator
             }
             catch (Exception ex)
             {
+                LocalFileLogger.Error("PLC", "ReadVariable failed tag=" + tag + " err=" + ex.Message);
                 Log("ReadVariable 错误: " + ex.Message);
                 return null;
             }
@@ -1519,6 +1534,7 @@ namespace EQModeChangeSimulator
             }
             catch (Exception ex)
             {
+                LocalFileLogger.Error("PLC", "WriteVariable failed tag=" + tagName + " err=" + ex.Message);
                 Log($"WriteWordArray 写入失败，Tag={tagName}, Err={ex.Message}");
                 return false;
             }

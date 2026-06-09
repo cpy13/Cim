@@ -64,6 +64,7 @@
     </Compile>
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="LinkSignalHandler.cs" />
+    <Compile Include="LocalFileLogger.cs" />
     <Compile Include="PpidDrawingMapForm.cs">
       <SubType>Form</SubType>
     </Compile>
