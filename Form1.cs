@@ -64,6 +64,15 @@ namespace EQModeChangeSimulator
         Dictionary<string, EventMap> EventMapping = new Dictionary<string, EventMap>();
         Dictionary<string, EQEventState> EventStates = new Dictionary<string, EQEventState>();
 
+        private const int CimToEqDataWords = 273;
+        private const int JobDataRequestReplyBitWord = 3;
+        private const int JobDataRequestReplyBit = 13;
+        private const int JobDataRequestReplyBlockOffset = 72;
+        private const int JobDataRequestReplyJobWords = 150;
+        private const int JobDataRequestReplyAckOffset = 222;
+        private const int JobDataRequestReplyMinWords = 243;
+        private const int JobDataRequestReplyBlockWords = 171;
+
         // ===============================
         // EQ↔EQ LinkSignal 映射
         // ===============================
@@ -640,9 +649,9 @@ namespace EQModeChangeSimulator
               "RV_CIMToEQ_Data_01_03_00", 1, 3);
             AddEvent("JobDataRequest",
     "SD_EQToCIM_Data01_03_01_00", 0, 15,  
-    "RV_CIMToEQ_Data_01_03_00", 3, 13);
+    "RV_CIMToEQ_Data_01_03_00", JobDataRequestReplyBitWord, JobDataRequestReplyBit);
             EventMapping["JobDataRequest"].BlockType = EventMap.ReplyBlockType.JobDataRequest;
-            EventMapping["JobDataRequest"].ReplyBlockWord = 162;   // 你提供的起始 WORD
+            EventMapping["JobDataRequest"].ReplyBlockWord = JobDataRequestReplyBlockOffset;
             AddEvent("JobManualMoveReport",
               "SD_EQToCIM_Data01_03_01_00", 0, 14,
               "RV_CIMToEQ_Data_01_03_00", 3, 12);
@@ -1220,52 +1229,104 @@ namespace EQModeChangeSimulator
                     Log($"收到 Reply → {em.Name}");
 
                     // ====== 新增：按用户定义的 BlockType 解析 ======
-                    switch (em.BlockType)
+                    st.WaitingReply = false;
+                    st.Sent = false;
+
+                    bool parseOk = true;
+
+                    try
                     {
-                        case EventMap.ReplyBlockType.JobDataRequest:
-                            HandleJobDataRequestReplyBlock(em);
-                            break;
+                        switch (em.BlockType)
+                        {
+                            case EventMap.ReplyBlockType.JobDataRequest:
+                                parseOk = HandleJobDataRequestReplyBlock(em);
+                                break;
 
                         case EventMap.ReplyBlockType.None:
                         default:
                             break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        parseOk = false;
+                        Log($"{em.Name} Reply parse failed: {ex.Message}");
                     }
 
                     ClearEQEvent(em);
-                    st.WaitingReply = false;
-                    st.Sent = false;
+
+                    if (!parseOk)
+                        Log($"{em.Name} Reply received, but parse failed; T2 wait cleared.");
                 }
             }
         }
 
-        private void HandleJobDataRequestReplyBlock(EventMap em)
+        private bool HandleJobDataRequestReplyBlock(EventMap em)
         {
-            const string tag = "RV_CIMToEQ_Data_01_03_00";
-            int[] rv = ReadWordArray(tag);
-            if (rv == null) return;
+            int[] rv = ReadWordArray(em.ReplyTag);
+            if (rv == null)
+            {
+                Log("JobDataRequestReply parse failed: source is null");
+                return false;
+            }
 
-            int baseWord = em.ReplyBlockWord; // 162
+            int srcIndex = GetJobDataRequestReplySourceIndex(rv);
+
+            if (!HasEnoughWords(rv, srcIndex, JobDataRequestReplyJobWords, "JobDataRequestReply JobData"))
+                return false;
+
+            int ackIndex = srcIndex == JobDataRequestReplyBlockOffset
+                ? JobDataRequestReplyAckOffset
+                : srcIndex + JobDataRequestReplyJobWords;
+
+            if (!HasEnoughWords(rv, ackIndex, 1, "JobDataRequestReply Ack"))
+                return false;
 
             // 1) JobData = 150 WORD（PLC格式）
-            int[] jobWords = new int[150];
-            Array.Copy(rv, baseWord, jobWords, 0, 150);
+            int[] jobWords = new int[JobDataRequestReplyJobWords];
+            Array.Copy(rv, srcIndex, jobWords, 0, JobDataRequestReplyJobWords);
 
             // 2) Ack = 1 WORD
-            int ack = rv[baseWord + 150];
+            int ack = rv[ackIndex];
 
             // 3) Reserved (20 WORD) 可忽略
             // int[] reserved = new int[20];
             // Array.Copy(rv, baseWord + 151, reserved, 0, 20);
 
-            Log($"JobDataRequestReplyBlock: Ack={ack}");
+            Log($"JobDataRequestReplyBlock: source.Length={rv.Length}, srcIndex={srcIndex}, Ack={ack}");
 
             // 4) 发送给 C++
             SendToCpp("JobDataRequestReply", new
             {
                 ack = ack,
-                length = 150,
+                length = JobDataRequestReplyJobWords,
                 job = jobWords
             });
+
+            return true;
+        }
+
+        private int GetJobDataRequestReplySourceIndex(int[] source)
+        {
+            if (source.Length >= JobDataRequestReplyMinWords)
+                return JobDataRequestReplyBlockOffset;
+
+            if (source.Length == JobDataRequestReplyBlockWords)
+                return 0;
+
+            return source.Length >= CimToEqDataWords
+                ? JobDataRequestReplyBlockOffset
+                : 0;
+        }
+
+        private bool HasEnoughWords(int[] source, int srcIndex, int copyLength, string context)
+        {
+            int expectedMinLength = srcIndex + copyLength;
+            if (source.Length >= expectedMinLength)
+                return true;
+
+            Log($"{context} parse failed: source.Length={source.Length}, srcIndex={srcIndex}, copyLength={copyLength}, expectedMinLength={expectedMinLength}");
+            return false;
         }
 
 
