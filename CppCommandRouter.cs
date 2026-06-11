@@ -18,6 +18,17 @@ namespace EQModeChangeSimulator
         bool WriteWordArray(string tag, int[] value);
         void TriggerEvent(string eventName);
         void SendEventAndBlock(string eventName, Action<int[]> blockWriter);
+        bool CompleteRecipeParameterRequestCommandReply(
+            int recipeNumber,
+            int versionYear,
+            int versionMonth,
+            int versionDay,
+            int versionHour,
+            int versionMinute,
+            int versionSecond,
+            int unitNumber,
+            int recipeStepNumber,
+            int result);
         void Log(string msg);
     }
 
@@ -28,6 +39,7 @@ namespace EQModeChangeSimulator
     public class CppCommandRouter
     {
         private readonly IEqContext _ctx;
+        private bool _dvDataReadyForReport;
 
         public CppCommandRouter(IEqContext ctx)
         {
@@ -59,6 +71,10 @@ namespace EQModeChangeSimulator
                     case "CurrentRecipeNumberChangeReport":
                         if (!Form1.Instance.CimModeEnabled) break;
                         HandleCurrentRecipeNumberChangeReport(obj);
+                        break;
+                    case "RecipeParameterRequestCommandReply":
+                        if (!Form1.Instance.CimModeEnabled) break;
+                        HandleRecipeParameterRequestCommandReply(obj);
                         break;
                     case "CIMMessageConfirmReport":
                         if (!Form1.Instance.CimModeEnabled) break;
@@ -107,6 +123,10 @@ namespace EQModeChangeSimulator
                     case "DVData":
                         if (!Form1.Instance.CimModeEnabled) break;
                         HandleDVData(obj);
+                        break;
+                    case "ParameterData":
+                        if (!Form1.Instance.CimModeEnabled) break;
+                        HandleParameterData(obj);
                         break;
                     case "MachineModeChangeReport":
                         if (!Form1.Instance.CimModeEnabled) break;
@@ -285,7 +305,11 @@ namespace EQModeChangeSimulator
                 // ===== Recipe Number =====
                 data[baseWord + 18] = recipeNumber;
 
-                // 剩余 Reserved 自动保留原值，不写即可
+                // ===== Reserved：6 WORD =====
+                for (int i = 19; i < 25; i++)
+                {
+                    data[baseWord + i] = 0;
+                }
             });
 
             
@@ -327,6 +351,45 @@ namespace EQModeChangeSimulator
             });
 
            
+        }
+
+        private void HandleRecipeParameterRequestCommandReply(JObject obj)
+        {
+            var d = obj["data"];
+            if (d == null)
+            {
+                _ctx.Log("[TCP] RecipeParameterRequestCommandReply missing data");
+                return;
+            }
+
+            int recipeNumber = (int?)d["recipeNumber"] ?? 0;
+            int versionYear = (int?)d["versionYear"] ?? 0;
+            int versionMonth = (int?)d["versionMonth"] ?? 0;
+            int versionDay = (int?)d["versionDay"] ?? 0;
+            int versionHour = (int?)d["versionHour"] ?? 0;
+            int versionMinute = (int?)d["versionMinute"] ?? 0;
+            int versionSecond = (int?)d["versionSecond"] ?? 0;
+            int unitNumber = (int?)d["unitNumber"] ?? 0;
+            int recipeStepNumber = (int?)d["recipeStepNumber"] ?? 0;
+            int result = (int?)d["result"] ?? 2;
+
+            if (result != 1 && result != 2)
+            {
+                _ctx.Log($"RecipeParameterRequestCommandReply invalid Result={result}");
+                return;
+            }
+
+            _ctx.CompleteRecipeParameterRequestCommandReply(
+                recipeNumber,
+                versionYear,
+                versionMonth,
+                versionDay,
+                versionHour,
+                versionMinute,
+                versionSecond,
+                unitNumber,
+                recipeStepNumber,
+                result);
         }
 
         private void HandleCIMMessageConfirmReport(JObject obj)
@@ -983,6 +1046,8 @@ namespace EQModeChangeSimulator
 
         private void HandleDVData(JObject obj)
         {
+            _dvDataReadyForReport = false;
+
             var d = obj["data"];
             if (d == null)
             {
@@ -1012,13 +1077,56 @@ namespace EQModeChangeSimulator
             }
 
             if (_ctx.WriteWordArray(dvTag, dvWords))
+            {
+                _dvDataReadyForReport = true;
                 _ctx.Log("[EQ→CIM] 已写入 DVData Block （210 WORD）");
+            }
             else
+            {
                 _ctx.Log("[EQ→CIM] ❌ 写入 DVData Block 失败！");
+            }
 
 
        
            
+        }
+
+        private void HandleParameterData(JObject obj)
+        {
+            try
+            {
+                var d = obj["data"];
+                if (d == null)
+                {
+                    _ctx.Log("[TCP] ParameterData missing data");
+                    return;
+                }
+
+                string parameterData = (string)d["parameterData"] ?? "";
+                if (parameterData.Length > 420)
+                    parameterData = parameterData.Substring(0, 420);
+                parameterData = parameterData.PadRight(420, ' ');
+
+                const string tag = "BC_EQToCIM_Parameter_03_01_00";
+                int[] words = new int[210];
+                byte[] ascii = Encoding.ASCII.GetBytes(parameterData);
+
+                for (int i = 0; i < 210; i++)
+                {
+                    byte lo = ascii[i * 2];
+                    byte hi = ascii[i * 2 + 1];
+                    words[i] = (hi << 8) | lo;
+                }
+
+                if (_ctx.WriteWordArray(tag, words))
+                    _ctx.Log("[EQ->CIM] ParameterData block written");
+                else
+                    _ctx.Log("[EQ->CIM] ParameterData block write failed");
+            }
+            catch (Exception ex)
+            {
+                _ctx.Log("[EQ->CIM] ParameterData error: " + ex.Message);
+            }
         }
 
         private void HandleMachineModeChangeReport(JObject obj)
@@ -1046,6 +1154,14 @@ namespace EQModeChangeSimulator
 
         private void HandleDVDataReport(JObject obj)
         {
+            if (!_dvDataReadyForReport)
+            {
+                _ctx.Log("[DV] DVData 未成功写入，跳过 DVDataReport");
+                return;
+            }
+
+            _dvDataReadyForReport = false;
+
             var d = obj["data"];
             if (d == null)
             {

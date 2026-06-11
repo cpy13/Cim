@@ -59,7 +59,7 @@ namespace EQModeChangeSimulator
                     break;
 
                 case "RecipeParameterRequestCommand":
-                    HandleRecipeParameterRequest();
+                    HandleRecipeParameterRequestCommand();
                     break;
 
                 case "CurrentRecipeChangeCommand":
@@ -214,9 +214,40 @@ namespace EQModeChangeSimulator
             _log("▶ MachineModeChangeCommand 执行");
         }
 
-        private void HandleRecipeParameterRequest()
+        public bool HandleRecipeParameterRequestCommand()
         {
-            _log("▶ RecipeParameterRequestCommand 执行");
+            int[] rv = _readWordArray("RV_CIMToEQ_Data_01_03_00");
+            if (rv == null || rv.Length < 51)
+            {
+                _log("RecipeParameterRequestCommand: 读取 CommandBlock 失败");
+                return false;
+            }
+
+            const int baseWord = 39;
+            int recipeNumber = rv[baseWord + 0];
+            int versionYear = rv[baseWord + 1];
+            int versionMonth = rv[baseWord + 2];
+            int versionDay = rv[baseWord + 3];
+            int versionHour = rv[baseWord + 4];
+            int versionMinute = rv[baseWord + 5];
+            int versionSecond = rv[baseWord + 6];
+            int unitNumber = rv[baseWord + 7];
+            int recipeStepNumber = rv[baseWord + 8];
+
+            _log($"RecipeParameterRequestCommand: RecipeNumber={recipeNumber}, Unit={unitNumber}, Step={recipeStepNumber}");
+
+            return SendToCpp("RecipeParameterRequestCommand", new
+            {
+                recipeNumber = recipeNumber,
+                versionYear = versionYear,
+                versionMonth = versionMonth,
+                versionDay = versionDay,
+                versionHour = versionHour,
+                versionMinute = versionMinute,
+                versionSecond = versionSecond,
+                unitNumber = unitNumber,
+                recipeStepNumber = recipeStepNumber
+            });
         }
 
         private void HandleCurrentRecipeChange()

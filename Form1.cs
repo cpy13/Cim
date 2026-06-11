@@ -589,7 +589,7 @@ namespace EQModeChangeSimulator
 
             AddCmd("DateTimeSetCommand", "RV_CIMToEQ_Data_01_03_00", 0, 3, "SD_EQToCIM_Data01_03_01_00", 2, 3);
             AddCmd("MachineModeChangeCommand", "RV_CIMToEQ_Data_01_03_00", 0, 4, "SD_EQToCIM_Data01_03_01_00", 2, 4);
-            AddCmd("RecipeParameterRequestCommand", "RV_CIMToEQ_Data_01_03_00", 0, 5, "SD_EQToCIM_Data01_03_01_00", 2, 5);
+            AddCmd("RecipeParameterRequestCommand", "RV_CIMToEQ_Data_01_03_00", 0, 5, "SD_EQToCIM_RecipeData_03_01_00", 1, 0);
             
             AddCmd("FGCodeCommand", "RV_CIMToEQ_Data_01_03_00", 0, 7, "SD_EQToCIM_Data01_03_01_00", 2, 7);
 
@@ -1354,12 +1354,22 @@ namespace EQModeChangeSimulator
             // ===== ON 边沿（0→1）=====
             if (!st.Last && cur)
             {
-                cmdHandler.Handle(cmdName);
-                WriteReply(map, true);
-                Log($"{cmdName} ON → Reply ON");
-
                 st.WaitingOff = true;
                 st.Deadline = DateTime.Now.AddSeconds(T1);
+
+                if (cmdName == "RecipeParameterRequestCommand")
+                {
+                    bool sent = cmdHandler.HandleRecipeParameterRequestCommand();
+                    Log(sent
+                        ? $"{cmdName} ON -> waiting main software reply"
+                        : $"{cmdName} ON -> failed to notify main software");
+                }
+                else
+                {
+                    cmdHandler.Handle(cmdName);
+                    WriteReply(map, true);
+                    Log($"{cmdName} ON → Reply ON");
+                }
             }
 
             // ===== OFF 边沿（1→0）=====
@@ -1386,6 +1396,60 @@ namespace EQModeChangeSimulator
                 data[map.ReplyWord] &= ~(1 << map.ReplyBit);
 
             WriteWordArray(map.ReplyTag, data);
+        }
+
+        public bool CompleteRecipeParameterRequestCommandReply(
+            int recipeNumber,
+            int versionYear,
+            int versionMonth,
+            int versionDay,
+            int versionHour,
+            int versionMinute,
+            int versionSecond,
+            int unitNumber,
+            int recipeStepNumber,
+            int result)
+        {
+            const string commandName = "RecipeParameterRequestCommand";
+            const string tag = "SD_EQToCIM_RecipeData_03_01_00";
+            const int baseWord = 67;
+
+            CmdState state;
+            if (!CmdStates.TryGetValue(commandName, out state) || !state.WaitingOff)
+            {
+                Log("RecipeParameterRequestCommandReply ignored: command is not pending");
+                return false;
+            }
+
+            int[] data = ReadWordArray(tag);
+            if (data == null || data.Length < baseWord + 12)
+            {
+                Log("RecipeParameterRequestCommandReply: read RecipeData failed");
+                return false;
+            }
+
+            data[baseWord + 0] = recipeNumber;
+            data[baseWord + 1] = versionYear;
+            data[baseWord + 2] = versionMonth;
+            data[baseWord + 3] = versionDay;
+            data[baseWord + 4] = versionHour;
+            data[baseWord + 5] = versionMinute;
+            data[baseWord + 6] = versionSecond;
+            data[baseWord + 7] = unitNumber;
+            data[baseWord + 8] = recipeStepNumber;
+            data[baseWord + 9] = result;
+            data[baseWord + 10] = 0;
+            data[baseWord + 11] = 0;
+            data[1] |= 1 << 0;
+
+            if (!WriteWordArray(tag, data))
+            {
+                Log("RecipeParameterRequestCommandReply: write RecipeData failed");
+                return false;
+            }
+
+            Log($"RecipeParameterRequestCommandReply ON: RecipeNumber={recipeNumber}, Result={result}");
+            return true;
         }
 
         void timerT1_Tick(object sender, EventArgs e)
@@ -1481,7 +1545,11 @@ namespace EQModeChangeSimulator
                 // ★ 先写 Block（ASCII）
                 int temperature = 25;
                 int humidity = 60;
-                WriteCvDataBlock(temperature, humidity);
+                if (!WriteCvDataBlock(temperature, humidity))
+                {
+                    Log("[CV] CVData Block 写入失败，跳过 CVDataReport");
+                    return;
+                }
 
                 // ★ 再触发事件（bit only，blockWriter 不写内容）
                 SendEventAndBlock("CVDataReport", data =>
@@ -1492,7 +1560,7 @@ namespace EQModeChangeSimulator
                
             }
         }
-        private void WriteCvDataBlock(int temperature, int humidity)
+        private bool WriteCvDataBlock(int temperature, int humidity)
         {
             const string blockTag = "BC_EQToCIM_CVData_03_01_00";
 
@@ -1500,7 +1568,7 @@ namespace EQModeChangeSimulator
             if (block == null || block.Length < 210)
             {
                 Log("[CV] ❌ 无法读取 CV 数据 Block");
-                return;
+                return false;
             }
 
             // ====================================================
@@ -1524,9 +1592,14 @@ namespace EQModeChangeSimulator
             }
 
             // 写回 PLC
-            WriteWordArray(blockTag, block);
+            if (!WriteWordArray(blockTag, block))
+            {
+                Log("[CV] CVData Block 写入 PLC 失败");
+                return false;
+            }
 
             Log($"[CV] Block 写入温度/湿度成功 → {text.Trim()}");
+            return true;
         }
 
         // ===============================
