@@ -722,9 +722,9 @@ namespace EQModeChangeSimulator
 
 
             // ……我->下游  读取
-            AddLink("ReceiveAble", "RV_EQToEQ_LinkSignal_04_03_00", 3, 3);
-            AddLink("ConveyerState", "RV_EQToEQ_LinkSignal_04_03_00", 3, 11);
-            AddLink("ReceiveComplete", "RV_EQToEQ_LinkSignal_04_03_00", 3, 5);
+            AddLink("ReceiveAble", "RV_EQToEQ_LinkSignal_05_03_00", 3, 3);
+            AddLink("ConveyerState", "RV_EQToEQ_LinkSignal_05_03_00", 3, 11);
+            AddLink("ReceiveComplete", "RV_EQToEQ_LinkSignal_05_03_00", 3, 5);
 
             // ……继续补齐
         }
@@ -877,7 +877,7 @@ namespace EQModeChangeSimulator
                 variableCompolet1.SetEvent("RV_CIMToEQ_Data_01_03_00", 1);
                 variableCompolet1.SetEvent("RV_CIMToEQ_PanelManagement_01_03_00", 2);
                 variableCompolet1.SetEvent("RV_EQToEQ_LinkSignal_02_03_00", 3);
-                variableCompolet1.SetEvent("RV_EQToEQ_LinkSignal_04_03_00", 4);
+                variableCompolet1.SetEvent("RV_EQToEQ_LinkSignal_05_03_00", 4);
                 LocalFileLogger.Info("PLC", "Monitoring started");
                 _state = EqState.Idle;
                 UpdateState();
@@ -898,7 +898,7 @@ namespace EQModeChangeSimulator
                 Log($"开始监控: {"RV_CIMToEQ_Data_01_03_00"}");
                 Log($"开始监控: {"RV_CIMToEQ_PanelManagement_01_03_00"}");
                 Log($"开始监控: {"RV_EQToEQ_LinkSignal_02_03_00"}");
-                Log($"开始监控: {"RV_EQToEQ_LinkSignal_04_03_00"}");
+                Log($"开始监控: {"RV_EQToEQ_LinkSignal_05_03_00"}");
                 // ===============================
                 // ★ 默认开启 CIM MODE + 上报一次状态
                 // ===============================
@@ -923,7 +923,7 @@ namespace EQModeChangeSimulator
                 variableCompolet1.ClearEvent("RV_CIMToEQ_Data_01_03_00");
                 variableCompolet1.ClearEvent("RV_CIMToEQ_PanelManagement_01_03_00");
                 variableCompolet1.ClearEvent("RV_EQToEQ_LinkSignal_02_03_00");
-                variableCompolet1.ClearEvent("RV_EQToEQ_LinkSignal_04_03_00");
+                variableCompolet1.ClearEvent("RV_EQToEQ_LinkSignal_05_03_00");
                 LocalFileLogger.Info("PLC", "Monitoring stopped");
                 _state = EqState.Idle;
                 UpdateState();
@@ -1741,7 +1741,7 @@ namespace EQModeChangeSimulator
             var targets = new (string tag, int word, int bit)[]
             {
         ("SD_EQToEQ_LinkSignal_03_02_00", 3, 0),
-        ("SD_EQToEQ_LinkSignal_03_04_00", 0, 0),
+        ("SD_EQToEQ_LinkSignal_03_05_00", 0, 0),
         ("SD_EQToCIM_Data01_03_01_00", 0, 0),
         ("SD_EQToCIM_Data01_03_01_00", 0, 1),
             };
