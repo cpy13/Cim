@@ -72,6 +72,8 @@ namespace EQModeChangeSimulator
         private const int JobDataRequestReplyAckOffset = 222;
         private const int JobDataRequestReplyMinWords = 243;
         private const int JobDataRequestReplyBlockWords = 171;
+        private bool _jobDataRequestFromAoi;
+        private string _jobDataRequestJobId = "";
 
         // ===============================
         // EQ↔EQ LinkSignal 映射
@@ -937,47 +939,101 @@ namespace EQModeChangeSimulator
         private void BtnSendJobRequest_Click(object sender, EventArgs e)
         {
             string jobId = txtJobID.Text.Trim();
-            int cstSeq = int.Parse(txtCSTSeq.Text);
-            int slotSeq = int.Parse(txtSlotSeq.Text);
+            if (!int.TryParse(txtCSTSeq.Text, out int cstSeq) ||
+                !int.TryParse(txtSlotSeq.Text, out int slotSeq))
+            {
+                MessageBox.Show("CST/Slot 必须为整数！");
+                return;
+            }
             int option = cmbReqOption.SelectedIndex + 1;  // 1~4
 
             Log($"[手动请求 JobDataRequest] JobID={jobId}, CST={cstSeq}, Slot={slotSeq}, Option={option}");
+            RequestJobData(jobId, cstSeq, slotSeq, option, false);
+        }
 
-            // 发送事件 + Block
-            SendEventAndBlock("JobDataRequest", data =>
+        public bool RequestJobData(string jobId, int cstSeq, int slotSeq, int requestOption,
+                                   bool notifyCpp)
+        {
+            if (IsDisposed || Disposing || !IsHandleCreated)
             {
-                int baseWord = 248;
+                LocalFileLogger.Warn("PLC", "JobDataRequest UI dispatch unavailable");
+                if (notifyCpp) SendJobDataRequestFailure(jobId, "ui_dispatch_unavailable");
+                return false;
+            }
+            if (InvokeRequired)
+            {
+                try
+                {
+                    return (bool)Invoke(new Func<bool>(
+                        () => RequestJobData(jobId, cstSeq, slotSeq, requestOption, notifyCpp)));
+                }
+                catch (Exception ex)
+                {
+                    LocalFileLogger.Error("PLC", "JobDataRequest UI dispatch failed: " + ex.Message);
+                    Log("[JobDataRequest] UI线程调度失败: " + ex.Message);
+                    if (notifyCpp) SendJobDataRequestFailure(jobId, "ui_dispatch_failed");
+                    return false;
+                }
+            }
 
-                // ===============================
-                // 1) 写入 Request Job ID (ASCII → 20 WORD)
-                // ===============================
-                byte[] ascii = Encoding.ASCII.GetBytes(jobId.PadRight(40, ' ')); // 40 字节
+            jobId = (jobId ?? "").Trim();
+            bool validAscii = jobId.Length > 0 && jobId.Length <= 40;
+            foreach (char ch in jobId)
+                validAscii &= ch >= 0x21 && ch <= 0x7e;
 
+            if (!cimModeEnabled || !validAscii || cstSeq < 0 || cstSeq > 65535 ||
+                slotSeq < 0 || slotSeq > 65535 || requestOption < 1 || requestOption > 4)
+            {
+                Log($"[JobDataRequest] rejected JobID={jobId}, CST={cstSeq}, Slot={slotSeq}, Option={requestOption}");
+                if (notifyCpp) SendJobDataRequestFailure(jobId, "invalid_request");
+                return false;
+            }
+
+            if (EventStates.TryGetValue("JobDataRequest", out var state) && state.WaitingReply)
+            {
+                Log($"[JobDataRequest] rejected busy, JobID={jobId}");
+                if (notifyCpp) SendJobDataRequestFailure(jobId, "request_busy");
+                return false;
+            }
+
+            bool sent = SendEventAndBlock("JobDataRequest", data =>
+            {
+                const int baseWord = 248;
+                string fixedJobId = jobId.PadRight(40, ' ');
+                byte[] ascii = Encoding.ASCII.GetBytes(fixedJobId);
                 for (int i = 0; i < 20; i++)
                 {
                     byte lo = ascii[i * 2];
                     byte hi = ascii[i * 2 + 1];
                     data[baseWord + i] = (hi << 8) | lo;
                 }
-
-                // ===============================
-                // 2) CST Sequence Number
-                // ===============================
                 data[baseWord + 20] = cstSeq;
-
-                // ===============================
-                // 3) Slot Sequence Number
-                // ===============================
                 data[baseWord + 21] = slotSeq;
-
-                // ===============================
-                // 4) Request Option (1~4)
-                // ===============================
-                data[baseWord + 22] = option;
-
+                data[baseWord + 22] = requestOption;
             });
 
-         
+            if (!sent)
+            {
+                if (notifyCpp) SendJobDataRequestFailure(jobId, "event_send_failed");
+                return false;
+            }
+
+            _jobDataRequestFromAoi = notifyCpp;
+            _jobDataRequestJobId = jobId;
+            Log($"[JobDataRequest] sent JobID={jobId}, CST={cstSeq}, Slot={slotSeq}, Option={requestOption}, Origin={(notifyCpp ? "AOI" : "Manual")}");
+            return true;
+        }
+
+        private void SendJobDataRequestFailure(string requestJobId, string reason)
+        {
+            SendToCpp("JobDataRequestReply", new
+            {
+                ack = 0,
+                length = 0,
+                job = Array.Empty<int>(),
+                requestJobId = requestJobId ?? "",
+                reason = reason ?? "request_failed"
+            });
         }
         private void BtnManualMove_Click(object sender, EventArgs e)
         {
@@ -1066,26 +1122,26 @@ namespace EQModeChangeSimulator
             st.WaitingReply = true;
             st.Deadline = DateTime.Now.AddSeconds(T2);
         }
-        public void SendEventAndBlock(string eventName, Action<int[]> blockWriter)
+        public bool SendEventAndBlock(string eventName, Action<int[]> blockWriter)
         {
             eventName = eventName?.Trim() ?? "";
             if (!EventMapping.TryGetValue(eventName, out var em))
             {
                 Log($"[ERROR] SendEventAndBlock 未找到事件映射, eventName:{eventName}");
-                return;
+                return false;
             }
 
             if (!EventStates.TryGetValue(eventName, out var st))
             {
                 Log($"[ERROR] SendEventAndBlock 未找到事件状态, eventName:{eventName}");
-                return;
+                return false;
             }
 
             int[] data = ReadWordArray(em.EQTag);
             if (data == null)
             {
                 Log($"[ERR] SendEventAndBlock 读取 {em.EQTag} 失败");
-                return;
+                return false;
             }
 
             // 写 block 内容
@@ -1095,7 +1151,11 @@ namespace EQModeChangeSimulator
             data[em.EQWord] |= (1 << em.EQBit);
 
             // 写回 PLC tag
-            WriteWordArray(em.EQTag, data);
+            if (!WriteWordArray(em.EQTag, data))
+            {
+                Log($"[ERR] SendEventAndBlock 写入 {em.EQTag} 失败");
+                return false;
+            }
 
             // 更新事件状态机
             st.Sent = true;
@@ -1103,6 +1163,7 @@ namespace EQModeChangeSimulator
             st.Deadline = DateTime.Now.AddSeconds(T1);
 
             Log($"[EQ→CIM] 事件 {eventName} 已发送（包含 Block）");
+            return true;
         }
 
 
@@ -1256,7 +1317,19 @@ namespace EQModeChangeSimulator
                     ClearEQEvent(em);
 
                     if (!parseOk)
+                    {
                         Log($"{em.Name} Reply received, but parse failed; T2 wait cleared.");
+                        if (em.BlockType == EventMap.ReplyBlockType.JobDataRequest &&
+                            _jobDataRequestFromAoi)
+                            SendJobDataRequestFailure(_jobDataRequestJobId,
+                                                      "reply_parse_failed");
+                    }
+
+                    if (em.BlockType == EventMap.ReplyBlockType.JobDataRequest)
+                    {
+                        _jobDataRequestFromAoi = false;
+                        _jobDataRequestJobId = "";
+                    }
                 }
             }
         }
@@ -1296,14 +1369,14 @@ namespace EQModeChangeSimulator
             Log($"JobDataRequestReplyBlock: source.Length={rv.Length}, srcIndex={srcIndex}, Ack={ack}");
 
             // 4) 发送给 C++
-            SendToCpp("JobDataRequestReply", new
+            return SendToCpp("JobDataRequestReply", new
             {
                 ack = ack,
                 length = JobDataRequestReplyJobWords,
-                job = jobWords
+                job = jobWords,
+                requestJobId = _jobDataRequestJobId,
+                reason = ""
             });
-
-            return true;
         }
 
         private int GetJobDataRequestReplySourceIndex(int[] source)
@@ -1491,6 +1564,14 @@ namespace EQModeChangeSimulator
                     ClearEQEvent(em);
                     st.WaitingReply = false;
                     st.Sent = false;
+                    if (em.BlockType == EventMap.ReplyBlockType.JobDataRequest)
+                    {
+                        if (_jobDataRequestFromAoi)
+                            SendJobDataRequestFailure(_jobDataRequestJobId,
+                                                      "central_reply_timeout");
+                        _jobDataRequestFromAoi = false;
+                        _jobDataRequestJobId = "";
+                    }
                 }
             }
         }
@@ -1684,7 +1765,7 @@ namespace EQModeChangeSimulator
             bool ok = _tcpServer.SendToClient(json);
 
             if (!ok)
-                Log($"[Form1 → C++] 发送失败: {json}");
+                Log($"[Form1 → C++] 发送失败: cmd={cmd}");
             else
                 Log($"[Form1 → C++] 已发送: {cmd}");
 
@@ -1939,7 +2020,7 @@ namespace EQModeChangeSimulator
         bool IEqContext.WriteWordArray(string tag, int[] value) => WriteWordArray(tag, value);
         void IEqContext.TriggerEvent(string name) => TriggerEvent(name);
         void IEqContext.Log(string msg) => Log(msg);
-        void IEqContext.SendEventAndBlock(string eventName, Action<int[]> writer)
+        bool IEqContext.SendEventAndBlock(string eventName, Action<int[]> writer)
             => SendEventAndBlock(eventName, writer);
     }
 

@@ -140,7 +140,7 @@ namespace EQModeChangeSimulator
                 DisplayName="Receive Complete",
                 Tag="SD_EQToEQ_LinkSignal_03_02_00",
                 Word=3, Bit=5,
-                
+                Writable=true
             },
               new SignalDef{
                 UiGroup="上游通讯",
@@ -517,10 +517,48 @@ namespace EQModeChangeSimulator
 
                 cb.CheckedChanged += (_, __) =>
                 {
-                 
                     if (cb.Tag as string == "PLC_SYNC") return;
 
-                    WriteSignalBit(s, cb.Checked);
+                    bool on = cb.Checked;
+                    bool isManualReceiveComplete = IsUpstreamReceiveCompleteSignal(s);
+                    if (isManualReceiveComplete && on && MessageBox.Show(
+                        "确认人工回复上游 ReceiveComplete = ON？\r\n\r\n" +
+                        "仅用于：\r\n" +
+                        "板已实际完成进板，\r\n" +
+                        "但自动 ReceiveComplete 未正常回复上游的异常恢复。\r\n\r\n" +
+                        "错误操作可能导致上游提前结束传板流程。",
+                        "Manual ReceiveComplete Confirm",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning,
+                        MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+                    {
+                        LogManualUpstreamReceiveComplete(true, "Cancelled");
+                        cb.Tag = "PLC_SYNC";
+                        cb.Checked = false;
+                        cb.Tag = null;
+                        return;
+                    }
+
+                    if (isManualReceiveComplete)
+                    {
+                        bool writeSucceeded;
+                        try
+                        {
+                            writeSucceeded = WriteSignalBit(s, on);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine(
+                                $"[UI WRITE] {s.DisplayName} => {(on ? "ON" : "OFF")} Failed: {ex.Message}");
+                            writeSucceeded = false;
+                        }
+                        LogManualUpstreamReceiveComplete(
+                            on, writeSucceeded ? "Success" : "Failed");
+                    }
+                    else
+                    {
+                        WriteSignalBit(s, on);
+                    }
                 };
 
             
@@ -531,10 +569,10 @@ namespace EQModeChangeSimulator
 
             return row;
         }
-        private void WriteSignalBit(SignalDef s, bool on)
+        private bool WriteSignalBit(SignalDef s, bool on)
         {
             int[] words = ReadTag(s.Tag);
-            if (words == null) return;
+            if (words == null || words.Length <= s.Word) return false;
 
             if (on)
                 words[s.Word] |= (1 << s.Bit);
@@ -549,11 +587,33 @@ namespace EQModeChangeSimulator
             Console.WriteLine(
                 $"[UI WRITE] {s.DisplayName} => {(on ? "ON" : "OFF")}");
 
-      
             if (on && IsReceiveAbleSignal(s))
             {
                 HandleManualReceiveAble();
             }
+
+            return true;
+        }
+        private bool IsUpstreamReceiveCompleteSignal(SignalDef s)
+        {
+            return s.Tag == "SD_EQToEQ_LinkSignal_03_02_00"
+                && s.Word == 3
+                && s.Bit == 5;
+        }
+        private void LogManualUpstreamReceiveComplete(bool on, string result)
+        {
+            string message =
+                $"[MANUAL_UPSTREAM_RECEIVE_COMPLETE] Action={(on ? "ON" : "OFF")} " +
+                "Tag=SD_EQToEQ_LinkSignal_03_02_00 Word=3 Bit=5 " +
+                $"Result={result}";
+
+            Console.WriteLine(message);
+            if (result == "Failed")
+                LocalFileLogger.Error("EQ2EQ", message);
+            else if (result == "Cancelled")
+                LocalFileLogger.Warn("EQ2EQ", message);
+            else
+                LocalFileLogger.Info("EQ2EQ", message);
         }
         private bool IsReceiveAbleSignal(SignalDef s)
         {
