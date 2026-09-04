@@ -17,7 +17,9 @@ namespace EQModeChangeSimulator
         int[] ReadWordArray(string tag);
         bool WriteWordArray(string tag, int[] value);
         void TriggerEvent(string eventName);
-        void SendEventAndBlock(string eventName, Action<int[]> blockWriter);
+        bool SendEventAndBlock(string eventName, Action<int[]> blockWriter);
+        bool RequestJobData(string jobId, int cstSeq, int slotSeq, int requestOption,
+                            bool notifyCpp);
         bool CompleteRecipeParameterRequestCommandReply(
             int recipeNumber,
             int versionYear,
@@ -99,6 +101,9 @@ namespace EQModeChangeSimulator
                     case "JobManualMoveReport":
                         if (!Form1.Instance.CimModeEnabled) break;
                         HandleJobManualMoveReport(obj);
+                        break;
+                    case "JobDataRequest":
+                        HandleJobDataRequest(obj);
                         break;
                     case "JobJudgeResultReport":
                         if (!Form1.Instance.CimModeEnabled) break;
@@ -612,6 +617,23 @@ namespace EQModeChangeSimulator
                 _ctx.Log($"[EQ→CIM] MachineAutoMode → {(auto ? "AUTO" : "MANUAL")}");
             else
                 _ctx.Log($"❌ MachineAutoMode 写入失败");
+        }
+
+        private void HandleJobDataRequest(JObject obj)
+        {
+            var d = obj["data"];
+            if (d == null)
+            {
+                _ctx.RequestJobData("", 0, 0, 1, true);
+                return;
+            }
+
+            string jobId = ((string?)d["jobId"] ?? "").Trim();
+            int cstSeq = (int?)d["cstSeq"] ?? 0;
+            int slotSeq = (int?)d["slotSeq"] ?? 0;
+            int requestOption = (int?)d["requestOption"] ?? 1;
+
+            _ctx.RequestJobData(jobId, cstSeq, slotSeq, requestOption, true);
         }
 
         private void HandleJobManualMoveReport(JObject obj)
