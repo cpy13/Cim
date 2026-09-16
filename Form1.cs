@@ -75,6 +75,16 @@ namespace EQModeChangeSimulator
         private bool _jobDataRequestFromAoi;
         private string _jobDataRequestJobId = "";
 
+        private enum PeriodicDataReportStage
+        {
+            Idle,
+            CvPending,
+            UtPending
+        }
+
+        private PeriodicDataReportStage _periodicDataReportStage =
+            PeriodicDataReportStage.Idle;
+
         // ===============================
         // EQ↔EQ LinkSignal 映射
         // ===============================
@@ -670,8 +680,11 @@ namespace EQModeChangeSimulator
       "SD_EQToCIM_Data02_03_01_00", 0, 0,
       "RV_CIMToEQ_Data_01_03_00", 1, 11);
             AddEvent("CVDataReport",
+     "SD_EQToCIM_MachineVariable_03_01_00", 0, 1,
+     "RV_CIMToEQ_Data_01_03_00", 3, 15);
+            AddEvent("UTDataReport",
      "SD_EQToCIM_Data01_03_01_00", 0, 12,
-     "RV_CIMToEQ_Data_01_03_00", 1, 12);
+     "RV_CIMToEQ_Data_01_03_00", 1, 13);
             AddEvent("DVDataReport",
      "SD_EQToCIM_MachineVariable_03_01_00", 0, 0,
      "RV_CIMToEQ_Data_01_03_00", 3, 14);
@@ -1316,6 +1329,18 @@ namespace EQModeChangeSimulator
 
                     ClearEQEvent(em);
 
+                    if (em.Name == "CVDataReport")
+                    {
+                        _periodicDataReportStage = PeriodicDataReportStage.Idle;
+                        Log("[CV_DATA_REPORT] reply=OK request=OFF");
+                        SendUTDataReport();
+                    }
+                    else if (em.Name == "UTDataReport")
+                    {
+                        _periodicDataReportStage = PeriodicDataReportStage.Idle;
+                        Log("[UT_DATA_REPORT] reply=OK request=OFF");
+                    }
+
                     if (!parseOk)
                     {
                         Log($"{em.Name} Reply received, but parse failed; T2 wait cleared.");
@@ -1564,6 +1589,17 @@ namespace EQModeChangeSimulator
                     ClearEQEvent(em);
                     st.WaitingReply = false;
                     st.Sent = false;
+                    if (name == "CVDataReport")
+                    {
+                        _periodicDataReportStage = PeriodicDataReportStage.Idle;
+                        Log("[CV_DATA_REPORT] timeout request=OFF");
+                        SendUTDataReport();
+                    }
+                    else if (name == "UTDataReport")
+                    {
+                        _periodicDataReportStage = PeriodicDataReportStage.Idle;
+                        Log("[UT_DATA_REPORT] timeout request=OFF");
+                    }
                     if (em.BlockType == EventMap.ReplyBlockType.JobDataRequest)
                     {
                         if (_jobDataRequestFromAoi)
@@ -1610,6 +1646,7 @@ namespace EQModeChangeSimulator
         {
             if (!cimModeEnabled) return;
             if (CVIntervalHours <= 0) return;
+            if (_periodicDataReportStage != PeriodicDataReportStage.Idle) return;
 
             if (lastCVSendTime == DateTime.MinValue)
             {
@@ -1621,26 +1658,95 @@ namespace EQModeChangeSimulator
             {
                 lastCVSendTime = DateTime.Now;
 
-                Log($"[CV] 到达上报间隔 {CVIntervalHours} 小时 → 自动上报 CVDataReport");
-
-                // ★ 先写 Block（ASCII）
-                int temperature = 25;
-                int humidity = 60;
-                if (!WriteCvDataBlock(temperature, humidity))
-                {
-                    Log("[CV] CVData Block 写入失败，跳过 CVDataReport");
-                    return;
-                }
-
-                // ★ 再触发事件（bit only，blockWriter 不写内容）
-                SendEventAndBlock("CVDataReport", data =>
-                {
-                    // CVDataReport 事件没有 Block → 空
-                });
-
-               
+                Log($"[CV] 到达上报间隔 {CVIntervalHours} 小时 → 启动 CV/UT 串行上报");
+                SendCVDataReport();
             }
         }
+
+        private bool SendCVDataReport()
+        {
+            const int temperature = 25;
+            const int humidity = 60;
+
+            if (!WriteCvDataBlock(temperature, humidity))
+            {
+                Log("[CV_DATA_REPORT] block write failed; request remains OFF");
+                return false;
+            }
+
+            bool sent = SendEventAndBlock("CVDataReport", data => { });
+            if (!sent)
+            {
+                Log("[CV_DATA_REPORT] request send failed; request remains OFF");
+                return false;
+            }
+
+            EventStates["CVDataReport"].Deadline = DateTime.Now.AddSeconds(T2);
+            _periodicDataReportStage = PeriodicDataReportStage.CvPending;
+            Log("[CV_DATA_REPORT] request=ON data=TEMP=25;HUMI=60 " +
+                "request_bit=W0.B1 reply_bit=W3.B15");
+            return true;
+        }
+
+        private bool SendUTDataReport()
+        {
+            if (!cimModeEnabled)
+            {
+                _periodicDataReportStage = PeriodicDataReportStage.Idle;
+                Log("[UT_DATA_REPORT] skipped because CIM mode is OFF");
+                return false;
+            }
+
+            if (!EventMapping.TryGetValue("UTDataReport", out var em) ||
+                !EventStates.TryGetValue("UTDataReport", out var st))
+            {
+                _periodicDataReportStage = PeriodicDataReportStage.Idle;
+                Log("[UT_DATA_REPORT] event mapping unavailable");
+                return false;
+            }
+
+            int[] data = ReadWordArray(em.EQTag);
+            if (data == null || data.Length < 173)
+            {
+                _periodicDataReportStage = PeriodicDataReportStage.Idle;
+                Log("[UT_DATA_REPORT] Data01 read failed or is shorter than W172");
+                return false;
+            }
+
+            WriteUtDataBlock(data);
+            data[em.EQWord] |= (1 << em.EQBit);
+
+            if (!WriteWordArray(em.EQTag, data))
+            {
+                _periodicDataReportStage = PeriodicDataReportStage.Idle;
+                Log("[UT_DATA_REPORT] block/request write failed");
+                return false;
+            }
+
+            st.Sent = true;
+            st.WaitingReply = true;
+            st.Deadline = DateTime.Now.AddSeconds(T2);
+            _periodicDataReportStage = PeriodicDataReportStage.UtPending;
+            Log("[UT_DATA_REPORT] request=ON block=W133-W172 " +
+                "values=0,0,0,0,0,0,0,0,0,0 " +
+                "request_bit=W0.B12 reply_bit=W1.B13");
+            return true;
+        }
+
+        private static void WriteUtDataBlock(int[] data)
+        {
+            const int baseWord = 133;
+            const int blockWords = 40;
+
+            // W133-134 WaterDIW, W135-136 GasCDA, W137-138 GasN2
+            // W139-140 ElectricityGPS, W141-142 ElectricityUPS
+            // W143-144 WaterDIWTotal, W145-146 GasCDATotal
+            // W147-148 GasN2Total, W149-150 ElectricityGPSTotal
+            // W151-152 ElectricityUPSTotal, W153-172 Reserved.
+            // All test values are zero, so no 32-bit word-order assumption is needed.
+            Array.Clear(data, baseWord, blockWords);
+        }
+
         private bool WriteCvDataBlock(int temperature, int humidity)
         {
             const string blockTag = "BC_EQToCIM_CVData_03_01_00";
@@ -1656,20 +1762,17 @@ namespace EQModeChangeSimulator
             // 1) 构造 ASCII 字符串
             // ====================================================
             string text = $"TEMP={temperature};HUMI={humidity}";
-
-            // 补齐到 210 WORD = 420 字节
-            text = text.PadRight(420, ' ');
-
             byte[] bytes = Encoding.ASCII.GetBytes(text);
 
             // ====================================================
-            // 2) 将 ASCII 写入 210 WORD（每个 WORD = 2 字节）
+            // 2) 清零 210 WORD，再按原有 lo/hi 规则打包 ASCII
             // ====================================================
-            for (int i = 0; i < 210; i++)
+            Array.Clear(block, 0, 210);
+            for (int i = 0; i < bytes.Length; i += 2)
             {
-                byte lo = bytes[i * 2];
-                byte hi = bytes[i * 2 + 1];
-                block[i] = (hi << 8) | lo;
+                byte lo = bytes[i];
+                byte hi = i + 1 < bytes.Length ? bytes[i + 1] : (byte)0;
+                block[i / 2] = (hi << 8) | lo;
             }
 
             // 写回 PLC
