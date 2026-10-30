@@ -14,6 +14,7 @@ namespace EQModeChangeSimulator
     /// </summary>
     public interface IEqContext
     {
+        void ClearLocalCimSignals(string origin);
         int[] ReadWordArray(string tag);
         bool WriteWordArray(string tag, int[] value);
         void TriggerEvent(string eventName);
@@ -61,6 +62,11 @@ namespace EQModeChangeSimulator
 
                 switch (cmd)
                 {
+                    case "ClearLocalCimSignals":
+                        LocalFileLogger.Info("RESET", "[CIM][RESET] Received ClearLocalCimSignals");
+                        _ctx.Log("[CIM][RESET] Received ClearLocalCimSignals");
+                        _ctx.ClearLocalCimSignals("D33Reset");
+                        break;
                     case "MachineStatusReport":
                         HandleMachineStatusReport(obj);
                         break;

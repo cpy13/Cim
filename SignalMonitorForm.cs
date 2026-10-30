@@ -15,10 +15,11 @@ namespace EQModeChangeSimulator
         private readonly Dictionary<string, int[]> _lastSnapshot = new();
         private readonly Dictionary<string, LedLamp> _lampMap = new();
         private readonly EqTcpServer _eqServer;
+        private readonly Action _clearLocalSignals;
         // ===============================
         // Signal definition（UI / PLC 解耦）
         // ===============================
-        class SignalDef
+        internal class SignalDef
         {
             public string UiGroup;           // UI 一级分组
             public string UiSubGroup;        // UI 二级分组
@@ -33,7 +34,7 @@ namespace EQModeChangeSimulator
         // ===============================
         // 协议映射
         // ===============================
-        private readonly List<SignalDef> Signals = new()
+        internal static readonly List<SignalDef> Signals = new()
         {
             // ================= 心跳 =================
             new SignalDef{
@@ -269,10 +270,11 @@ namespace EQModeChangeSimulator
         // UiGroup -> 主容器
         private readonly Dictionary<string, TableLayoutPanel> _uiGroupTables = new();
 
-        public SignalMonitorForm(VariableCompolet compolet, EqTcpServer eqServer)
+        public SignalMonitorForm(VariableCompolet compolet, EqTcpServer eqServer, Action clearLocalSignals)
         {
             _compolet = compolet;
             _eqServer = eqServer;
+            _clearLocalSignals = clearLocalSignals ?? throw new ArgumentNullException(nameof(clearLocalSignals));
             InitializeComponent();
             InitTimer();
         }
@@ -319,12 +321,8 @@ namespace EQModeChangeSimulator
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning) != DialogResult.Yes)
                     return;
-                // 清 EQ → 上游
-                ClearSendSignals(Signals.FindAll(s => s.UiSubGroup == "本机 → 上游"));
-                // 清 EQ → 下游
-                ClearSendSignals(Signals.FindAll(s => s.UiSubGroup == "本机 → 下游"));
-                // 通知 C++ 复位
-                SendEqResetCommand();
+                _clearLocalSignals();
+                // The existing 300 ms poll refreshes actual values; no optimistic success display.
             };
 
             this.Controls.Add(btnReset);
@@ -442,7 +440,7 @@ namespace EQModeChangeSimulator
             //        Width = 120
             //    };
 
-            //    btn.Click += (_, __) => ClearSendSignals(list);
+            //    Per-group reset is intentionally not exposed.
 
             //    Panel btnPanel = new Panel { Dock = DockStyle.Fill, Height = 35 };
             //    btnPanel.Controls.Add(btn);
@@ -451,41 +449,6 @@ namespace EQModeChangeSimulator
 
             box.Controls.Add(root);
             return box;
-        }
-
-        private void ClearSendSignals(List<SignalDef> list)
-        {
-            // 1️⃣ 按 Tag 分组
-            var groups = new Dictionary<string, List<SignalDef>>();
-
-            foreach (var s in list)
-            {
-                // ❌ 不清 In line
-                if (s.DisplayName.Contains("In line")) continue;
-
-                // 只清 Send / Receive / Job / Conveyer / Glass
-                if (!groups.ContainsKey(s.Tag))
-                    groups[s.Tag] = new List<SignalDef>();
-
-                groups[s.Tag].Add(s);
-            }
-
-            // 2️⃣ 批量写 PLC
-            foreach (var kv in groups)
-            {
-                string tag = kv.Key;
-                int[] words = ReadTag(tag);
-                if (words == null) continue;
-
-                foreach (var s in kv.Value)
-                {
-                    words[s.Word] &= ~(1 << s.Bit); // 强制 OFF
-                }
-
-                _compolet.WriteVariable(tag, words);
-                _lastSnapshot[tag] = (int[])words.Clone();
-                UpdateLamps(tag, words);
-            }
         }
 
         private Control CreateSignalRow(SignalDef s)
@@ -803,14 +766,6 @@ namespace EQModeChangeSimulator
             }
         }
 
-        private void SendEqResetCommand()
-        {
-            SendToCpp("EQResetCommand", new
-            {
-                reason = "SignalMonitorReset",
-                time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
-            });
-        }
         private bool SendToCpp(string cmd, object payload)
         {
             var json = Newtonsoft.Json.JsonConvert.SerializeObject(new

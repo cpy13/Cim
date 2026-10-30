@@ -160,6 +160,7 @@ namespace EQModeChangeSimulator
         private EqTcpServer _tcpServer;
         private CppCommandRouter _cppRouter;
         private LinkSignalHandler _linkHandler;
+        private LocalCimSignalReset _localSignalReset;
         private Timer timerHeartbeat;   // ★ 心跳计时器
         private bool heartbeatFlag = false;   // ON/OFF 翻转
         private CheckBox chkCIMMode;
@@ -192,10 +193,14 @@ namespace EQModeChangeSimulator
             InitEventSystem();
             InitLinkSignals();
             LoadTimeoutConfig();
+            _localSignalReset = new LocalCimSignalReset(SignalMonitorForm.Signals,
+                ReadWordArray, WriteWordArray, LogReset, SendToCpp);
+            // Establish the owner handle before TCP can dispatch work to it.
+            var ownerHandle = Handle;
             _cppRouter = new CppCommandRouter(this);
             _tcpServer = new EqTcpServer(
      Log,
-     _cppRouter.HandleRawJson,
+     DispatchCppJson,
      () =>
      {
          LocalFileLogger.Info("TCP", "Main software connected");
@@ -216,7 +221,7 @@ namespace EQModeChangeSimulator
     ReadWordArray,
     WriteWordArray,
     Log,
-    _tcpServer
+    _tcpServer.SendToClient, () => Eq2EqEnabled
 );
             Log("[TCP] EQ TCP Server 已启动");
             this.FormClosing += Form1_FormClosing;
@@ -565,7 +570,8 @@ namespace EQModeChangeSimulator
 
             btnSignalMonitor.Click += (s, e) =>
             {
-                new SignalMonitorForm(variableCompolet1, _tcpServer).Show();
+                new SignalMonitorForm(variableCompolet1, _tcpServer,
+                    () => ClearLocalCimSignals("SignalMonitorReset")).Show();
             };
 
             this.Controls.Add(btnSignalMonitor);
@@ -1186,6 +1192,11 @@ namespace EQModeChangeSimulator
 
         private void variableCompolet1_Changed(object sender, EventArgs e)
         {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(() => variableCompolet1_Changed(sender, e)));
+                return;
+            }
             try
             {
                 HashSet<string> pendingTags = new();   // ⭐ 收集本轮所有 tag（去重）
@@ -1796,6 +1807,25 @@ namespace EQModeChangeSimulator
 
             return false;
         }
+        private void DispatchCppJson(string json)
+        {
+            if (IsDisposed || Disposing || !IsHandleCreated) return;
+            // Marshal the whole command, not individual reads/writes: no interleaved RMW.
+            CimUiThread.Run(this, () => _cppRouter.HandleRawJson(json));
+        }
+
+        private void LogReset(string message)
+        {
+            LocalFileLogger.Info("RESET", message);
+            Log(message);
+        }
+
+        public void ClearLocalCimSignals(string origin)
+        {
+            if (IsDisposed || Disposing || !IsHandleCreated) return;
+            CimUiThread.Run(this, () => _localSignalReset.Clear(origin));
+        }
+
         private int[] ReadWordArray(string tag)
         {
             try
