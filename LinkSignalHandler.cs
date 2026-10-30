@@ -14,18 +14,20 @@ namespace EQModeChangeSimulator
         private readonly Func<string, int[]> _readWordArray;
         private readonly Func<string, int[], bool> _writeWordArray;
         private readonly Action<string> _log;
-        private readonly EqTcpServer _server;
+        private readonly Func<string, bool> _send;
+        private readonly Func<bool> _eq2eqEnabled;
 
         public LinkSignalHandler(
             Func<string, int[]> readWordArray,
             Func<string, int[], bool> writeWordArray,
             Action<string> log,
-            EqTcpServer server)
+            Func<string, bool> send, Func<bool> eq2eqEnabled)
         {
             _readWordArray = readWordArray;
             _writeWordArray = writeWordArray;
             _log = log;
-            _server = server;
+            _send = send;
+            _eq2eqEnabled = eq2eqEnabled;
         }
         
         // =============================================================
@@ -39,22 +41,22 @@ namespace EQModeChangeSimulator
             {
                 //接受上游指令
                 case "SendAble":
-                    if (!Form1.Instance.Eq2EqEnabled) break;
+                    if (!_eq2eqEnabled()) break;
                     HandleSendAble(on);
                     break;
 
                 case "SendStart":
-                    if (!Form1.Instance.Eq2EqEnabled) break;
+                    if (!_eq2eqEnabled()) break;
                     HandleSendStart(on);
                     break;
                 case "SendComplete":
-                    if (!Form1.Instance.Eq2EqEnabled) break;
+                    if (!_eq2eqEnabled()) break;
                     HandleSendComplete(on);
                    
                     break;
                 //接受下游指令
                 case "ReceiveAble":
-                    if (!Form1.Instance.Eq2EqEnabled) break;
+                    if (!_eq2eqEnabled()) break;
                     HandleReceiveAble(on);
                     break;
                 case "ConveyerState":
@@ -334,7 +336,7 @@ namespace EQModeChangeSimulator
                 data = payload
             });
 
-            bool ok = _server.SendToClient(json);
+            bool ok = _send(json);
 
           
             return ok;

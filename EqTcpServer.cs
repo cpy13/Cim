@@ -100,6 +100,7 @@ namespace EQModeChangeSimulator
             _onClientConnected?.Invoke();   // 新增：客户端已连接通知
             var stream = client.GetStream();
             byte[] buffer = new byte[4096];
+            var lines = new JsonLineBuffer();
 
             while (!token.IsCancellationRequested && client.Connected)
             {
@@ -114,13 +115,10 @@ namespace EQModeChangeSimulator
                         break;
                     }
 
-                    string json = Encoding.UTF8.GetString(buffer, 0, len);
-                    _log($"[TCP] 收到 JSON: {json}");
-
-                    foreach (var part in json.Split('\n'))
+                    foreach (var part in lines.Append(buffer, len))
                     {
-                        if (!string.IsNullOrWhiteSpace(part))
-                            _onJson(part.Trim());
+                        _log($"[TCP] 收到 JSON: {part}");
+                        _onJson(part);
                     }
                 }
                 catch (Exception ex)
@@ -208,6 +206,32 @@ namespace EQModeChangeSimulator
                 _log("[TCP] SendToClient 异常: " + ex.Message);
                 return false;
             }
+        }
+    }
+
+    // Per-connection framing; a TCP read is not necessarily a complete JSON command.
+    internal sealed class JsonLineBuffer
+    {
+        private readonly System.Collections.Generic.List<byte> _pending = new();
+        internal System.Collections.Generic.List<string> Append(byte[] bytes, int count)
+        {
+            var lines = new System.Collections.Generic.List<string>();
+            for (int i = 0; i < count; ++i)
+            {
+                if (bytes[i] == (byte)'\n')
+                {
+                    var line = Encoding.UTF8.GetString(_pending.ToArray()).Trim();
+                    _pending.Clear();
+                    if (line.Length != 0) lines.Add(line);
+                }
+                else
+                {
+                    _pending.Add(bytes[i]);
+                    if (_pending.Count > 4 * 1024 * 1024)
+                        throw new InvalidOperationException("TCP JSON line exceeds 4 MiB");
+                }
+            }
+            return lines;
         }
     }
 }
